@@ -8,12 +8,12 @@
 //
 #define MODIFIERKEY_FN 0x8f   // give Fn key a fake HID code 
 //
-#define KEY_FN_LOCK KEY_F13
+#define KEY_FN_LOCK 0x8e  // give Fn_lock key a fake HID code 
 //#define MUTE KEY_F14
 //#define MICMUTE KEY_F15
 //
 #define FN_LED 12 // Teensy I/O's connected to thru hole pads with resistors for LEDs
-#define MUTE_LED 41
+#define MEDIA_MUTE_LED 41
 #define MICMUTE_LED 13 // onboard LED set to blink
 #define CAPS_LED 43
 //
@@ -22,24 +22,20 @@
 #define TP_RIGHT 16
 #define TP_MIDDLE 45
 //#define TP_RETURN 30 // will be driven low
-//
-const byte rows_max = 17; // sets the number of rows in the keyboard matrix
-const byte cols_max = 9; // sets the number of columns in the keyboard matrix
-//
+// The touchpad ps/2 data and clock lines are connected to the following Teensy I/O pins
+#define TP_DATA 28
+#define TP_CLK 29
 
-// The touchpad is PS/2 and the code uses "stream mode" instead of "remote mode".
-// 
-// define the pins on the Teensy used for the touchpad ps2 bus
-#define TP_DATA 28 // Touchpad ps/2 data connected to Teensy I/O pin 
-#define TP_CLK 29  // Touchpad ps/2 clock connected to Teensy I/O pin 
-
+// Declare variables that will be used by functions
 boolean touchpad_error = LOW; // set high if the touchpad fails to give the correct power-up response
 char mstat; // touchpad status 8 bit register = Y overflow, X overflow, Y sign bit, X sign bit, Always 1, Middle Btn, Right Btn, Left Btn
 char mx; // touchpad x movement = 8 data bits. The sign bit is in the status register to 
            // make a 9 bit 2's complement value. Left to right on the touchpad gives a positive value. 
 char my; // touchpad y movement also 8 bits plus sign bit in status reg. Touchpad movement away from the user gives a positive value.
-
-
+//
+const byte rows_max = 17; // sets the number of rows in the keyboard matrix
+const byte cols_max = 9; // sets the number of columns in the keyboard matrix
+//
 // Load the normal key matrix with the Teensyduino key names 
 // described at www.pjrc.com/teensy/td_keyboard.html 
 // A zero indicates no normal key at that location.
@@ -109,7 +105,7 @@ unsigned int modifier[rows_max][cols_max] = {
 // A zero indicates no media key at that location. 
 unsigned int media[rows_max][cols_max] = {
 {0,0,0,0,0,0,0,0,0},
-{0,0,0,0,0,0,0,0,0},
+{0,0,0,0,0,0,0,KEY_FN_LOCK,0},
 {0,0,0,0,0,0,0,0,0},
 {KEY_MEDIA_VOLUME_INC,0,0,0,0,0,KEY_MEDIA_VOLUME_DEC,0,0},
 {0,0,0,0,0,0,KEY_MEDIA_MUTE,0,0},
@@ -153,6 +149,8 @@ unsigned int Row_IO[rows_max] = {25,2,22,4,5,20,6,19,7,18,8,9,38,10,39,11,42};
 //
 // Assign the column I/O numbers
 unsigned int Col_IO[cols_max] = {27,26,0,1,24,23,3,21,14}; 
+
+// declare and initialize trackpoint variables
 
 boolean left_button = 0; // on/off variable for left button, 1 = pushed
 boolean right_button = 0; // on/off variable for right button, 1 = pushed
@@ -332,6 +330,13 @@ void go_1(unsigned int pin)
 }
 //
 
+
+// *****************Functions for Touchpad***************************
+//
+
+
+// Function to send the touchpad a byte of data (command)
+//
 void tp_write(char send_data)  
 {
   unsigned int timeout = 200; // break out of loop if watchdog over this value in msec
@@ -419,6 +424,9 @@ void tp_write(char send_data)
 // Inhibit the bus so the tp only talks when the Teensy is listening
   go_0(TP_CLK);
 }
+
+
+
 //
 // Function to get a byte of data from the touchpad
 //
@@ -513,6 +521,9 @@ char tp_read(void)
   go_0(TP_CLK);
   return rcv_data; // pass the received data back
 }
+
+
+
 //
 // Function to decode 3 bytes of data from the touchpad = status, X Delta, Y Delta
 //
@@ -579,6 +590,8 @@ char tp_packet(void)
   while (digitalRead(TP_CLK) == LOW) { // loop until the clock goes high
   }
   mstat = rcv_data; // save data result in status byte
+
+
 // ******************************Receive Byte 1 = Delta X**************************  
   rcv_data = 0; // initialize to zero
   mask = 1; // shift a 1 across the 8 bits to select where to load the data
@@ -689,6 +702,8 @@ char tp_packet(void)
 return 0;
 }
 //
+
+
 void touchpad_init()
 {
   touchpad_error = LOW; // start with no error
@@ -811,16 +826,17 @@ void setup() {
     go_z(Row_IO[b]); // set each row pin as a floating output
   }  
 //
-  touchpad_init(); // reset tp and check that self diagnostic passed. Put tp in stream mode and enable it 
+  touchpad_init();
   //pinMode(HEARTBEAT_LED, OUTPUT); // drive the LED on the Teensy
 }
 //
+boolean over_flow; // set if x or y movement values are bad due to overflow
 boolean Fn_pressed = HIGH; // Initialize Fn key to HIGH = "not pressed"
 extern volatile uint8_t keyboard_leds; // 8 bits sent from host to Teensy that give keyboard LED status.
 //char blink_count = 0; // heartbeat loop counter
 //boolean blinky = LOW; // heartbeat LED state
 boolean fn_lock = LOW; // Wake up with fn lock turned off
-boolean over_flow; // Active high, set if x or y movement values are bad due to overflow
+boolean media_mute = LOW; // Wake up with media_mute led turned off
 //
 //---------------------------------Main Loop---------------------------------------------
 //
@@ -884,6 +900,9 @@ void loop() {
             }
           }
           else if (media[x][y] != 0) { // Fn is pressed so send media if a key exists in the matrix
+            if(media[x][y] == KEY_MEDIA_MUTE) {
+              media_mute = !media_mute;
+            }
             if (media[x][y] == KEY_FN_LOCK) {
               fn_lock = !fn_lock; // invert the fn lock control
             }
@@ -936,20 +955,27 @@ void loop() {
 // Control the 3 keyboard LEDs
 //
   if (keyboard_leds & 1<<1) {  // mask off all bits but D1 and test if set
-    go_1(CAPS_LED); // turn on the LED
+    go_0(CAPS_LED); // turn on the LED
   }
   else {
-    go_0(CAPS_LED); // turn off the LED
+    go_1(CAPS_LED); // turn off the LED
   }
 //
 //
   if (fn_lock) {
-    go_1(FN_LED); // turn on the FN Lock LED
+    go_0(FN_LED); // turn on the FN Lock LED
   }
   else {
-    go_0(FN_LED); // turn off the FN Lock LED
+    go_1(FN_LED); // turn off the FN Lock LED
   }
 //
+  if (media_mute) {
+    go_0(MEDIA_MUTE_LED);
+  }
+  else {
+    go_1(MEDIA_MUTE_LED);
+  }
+
 /*
   if (keyboard_leds & 1) {  // mask off all bits but D0 and test if set
     go_1(NUM_LED); // turn on the Num Lock LED
@@ -957,7 +983,7 @@ void loop() {
   else {
     go_0(NUM_LED); // turn off the Num Lock LED
   }
-//
+
   if (keyboard_leds & 1<<2) {  // mask off all bits but D2 and test if set
     go_1(SCRL_LED); // turn on the Scroll Lock LED
   }
@@ -967,21 +993,23 @@ void loop() {
 */
 
 
-// ***********Touchpad Section
+// ******************Trackpoint Section******************
 //
-  if (touchpad_error == LOW) { // Only proceed if the touchpad was initialized correctly and passed its self test
+  if (HIGH) { // (Only proceed if the touchpad was initialized correctly and passed its self test) this will always execute
 //
     if (tp_packet() == 0x00) { // tp_packet returned zero so data was received in mstat, mx, and my variables
       if (((0x80 & mstat) == 0x80) || ((0x40 & mstat) == 0x40))  {   // x or y overflow bits set?
       over_flow = 1; // set the overflow flag
       }   
 // change the x data from 9 bit to 8 bit 2's complement
+      mx = mx << 1; // left shift 1 bit (multiply by 2)
       mx = mx & 0x7f; // mask off 8th bit 
       if ((0x10 & mstat) == 0x10) {   // move the sign into 
         mx = 0x80 | mx;              // the 8th bit position
       } 
 // change the y data from 9 bit to 8 bit 2's complement and then take the 2's complement 
 // because y movement on ps/2 format is opposite of touchpad.move function
+      my = my << 1; // left shift 1 bit (multiply by 2)
       my = my & 0x7f; // mask off 8th bit
       if ((0x20 & mstat) == 0x20) {   // move the sign into 
         my = 0x80 | my;              // the 8th bit position
@@ -999,8 +1027,6 @@ void loop() {
 //
     }
   }
-//
-// End of touchpad routine
 
 
 // ***********************read the left and right buttons*********************************** 
@@ -1036,6 +1062,13 @@ void loop() {
   old_right_button = right_button;
   old_middle_button = middle_button;
   go_z(TP_ROW);
+  
+
+
+
+// Touchpad is enabled and in stream mode
+ 
+
   
 //
 // Blink the LED on the Teensy to show a heartbeat
