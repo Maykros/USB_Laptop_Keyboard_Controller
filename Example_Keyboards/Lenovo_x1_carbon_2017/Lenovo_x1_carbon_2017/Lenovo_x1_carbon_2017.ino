@@ -14,7 +14,7 @@
 //
 #define FN_LED 12 // Teensy I/O's connected to thru hole pads with resistors for LEDs
 #define MEDIA_MUTE_LED 41
-#define MICMUTE_LED 13 // onboard LED set to blink
+//#define MICMUTE_LED 13 // onboard LED set to blink
 #define CAPS_LED 43
 //
 #define TP_ROW 15
@@ -32,6 +32,7 @@ char mstat; // touchpad status 8 bit register = Y overflow, X overflow, Y sign b
 char mx; // touchpad x movement = 8 data bits. The sign bit is in the status register to 
            // make a 9 bit 2's complement value. Left to right on the touchpad gives a positive value. 
 char my; // touchpad y movement also 8 bits plus sign bit in status reg. Touchpad movement away from the user gives a positive value.
+unsigned int tp_sens_shift = 1;
 //
 const byte rows_max = 17; // sets the number of rows in the keyboard matrix
 const byte cols_max = 9; // sets the number of columns in the keyboard matrix
@@ -835,8 +836,8 @@ boolean Fn_pressed = HIGH; // Initialize Fn key to HIGH = "not pressed"
 extern volatile uint8_t keyboard_leds; // 8 bits sent from host to Teensy that give keyboard LED status.
 //char blink_count = 0; // heartbeat loop counter
 //boolean blinky = LOW; // heartbeat LED state
-boolean fn_lock = LOW; // Wake up with fn lock turned off
-boolean media_mute = LOW; // Wake up with media_mute led turned off
+boolean fn_lock = HIGH; // Wake up with fn lock turned off
+boolean media_mute = HIGH; // Wake up with media_mute led turned off
 //
 //---------------------------------Main Loop---------------------------------------------
 //
@@ -889,8 +890,8 @@ void loop() {
       else if ((normal[x][y] != 0) || (media[x][y] != 0)) {  // check if normal or media key exists at this location in the array
         if (!digitalRead(Col_IO[y]) && (old_key[x][y]) && (!slots_full)) { // check if key pressed and not previously pressed and slots not full
           old_key[x][y] = LOW; // Save state of key as "pressed"
-          if (Fn_pressed) {  // Fn_pressed is active low so it is not pressed and normal key needs to be sent
-            if (fn_lock) {  // test if FN Lock is turned on
+          if (Fn_pressed == HIGH) {  // Fn_pressed is not pressed and normal key needs to be sent
+            if (fn_lock == LOW) {  // test if FN Lock is turned on
               load_slot(fnlock[x][y]); //update first available slot with key name from fnlock matrix
               send_normals(); // send all slots over USB including the key that just got pressed
             }
@@ -900,7 +901,7 @@ void loop() {
             }
           }
           else if (media[x][y] != 0) { // Fn is pressed so send media if a key exists in the matrix
-            if(media[x][y] == KEY_MEDIA_MUTE) {
+            if (media[x][y] == KEY_MEDIA_MUTE) {
               media_mute = !media_mute;
             }
             if (media[x][y] == KEY_FN_LOCK) {
@@ -912,28 +913,19 @@ void loop() {
               Keyboard.release(media[x][y]); // send media key release
             }
           }
-          /*
-          else if (normal[x][y] == KEY_F12) { // Fn is active and F12 is pressed - recapture TP center
-            x_center = analogRead(A11); // store the center (no movement) position for x
-            y_center = analogRead(A10); // same for y
-          }
-          else if (normal[x][y] == KEY_F10) { // Fn is active and F10 is pressed - increase noise zone value by 5
-            noise_zone = noise_zone + 5;
-          }
-          else if (normal[x][y] == KEY_F9) { // Fn is active and F9 is pressed - decrease noise zone value by 5
-            if (noise_zone >= 5) { // don't allow noise zone to be reduced below zero because it will cause cursor drift
-              noise_zone = noise_zone - 5;
+          else if (normal[x][y] == KEY_F11) { // Fn is active and F11 is pressed - decrease trackpoint sensitivity
+            if (tp_sens_shift > 0) {
+              tp_sens_shift -= 1;
             }
           }
-          else if (normal[x][y] == KEY_F11) { // Fn is active and F11 is pressed - Set noise zone to default value of 50
-            noise_zone = 50;
+          else if (normal[x][y] == KEY_F12) { // Fn is active and F12 is pressed - increase trackpoint sensitivity
+            tp_sens_shift += 1;
           }
-          */
         }          
         else if (digitalRead(Col_IO[y]) && (!old_key[x][y])) { //check if key is not pressed, but was previously pressed 
           old_key[x][y] = HIGH; // Save state of key as "not pressed"
-          if (Fn_pressed) {  // Fn is not pressed
-            if (fn_lock) {  // test if FN lock is turned on
+          if (Fn_pressed == HIGH) {  // Fn is not pressed
+            if (fn_lock == LOW) {  // test if FN lock is turned on
               clear_slot(fnlock[x][y]); //clear slot with key name from fnlock matrix
               send_normals(); // send all slots over USB including the key that just got released
             }
@@ -963,35 +955,18 @@ void loop() {
 //
 //
   if (fn_lock) {
-    go_0(FN_LED); // turn on the FN Lock LED
+    go_1(FN_LED); // turn on the FN Lock LED
   }
   else {
-    go_1(FN_LED); // turn off the FN Lock LED
+    go_0(FN_LED); // turn off the FN Lock LED
   }
 //
   if (media_mute) {
-    go_0(MEDIA_MUTE_LED);
-  }
-  else {
     go_1(MEDIA_MUTE_LED);
   }
-
-/*
-  if (keyboard_leds & 1) {  // mask off all bits but D0 and test if set
-    go_1(NUM_LED); // turn on the Num Lock LED
-  }
   else {
-    go_0(NUM_LED); // turn off the Num Lock LED
+    go_0(MEDIA_MUTE_LED);
   }
-
-  if (keyboard_leds & 1<<2) {  // mask off all bits but D2 and test if set
-    go_1(SCRL_LED); // turn on the Scroll Lock LED
-  }
-  else {
-    go_0(SCRL_LED); // turn off the Scroll Lock LED
-  }
-*/
-
 
 // ******************Trackpoint Section******************
 //
@@ -1002,14 +977,14 @@ void loop() {
       over_flow = 1; // set the overflow flag
       }   
 // change the x data from 9 bit to 8 bit 2's complement
-      mx = mx << 1; // left shift 1 bit (multiply by 2)
+      mx = mx << tp_sens_shift; // left shift X by tp_sens_shift bit (multiply by tp_sens_shift*2)
       mx = mx & 0x7f; // mask off 8th bit 
       if ((0x10 & mstat) == 0x10) {   // move the sign into 
         mx = 0x80 | mx;              // the 8th bit position
       } 
 // change the y data from 9 bit to 8 bit 2's complement and then take the 2's complement 
 // because y movement on ps/2 format is opposite of touchpad.move function
-      my = my << 1; // left shift 1 bit (multiply by 2)
+      my = my << tp_sens_shift; // left shift Y by tp_sens_shift bit (multiply by tp_sens_shift*2)
       my = my & 0x7f; // mask off 8th bit
       if ((0x20 & mstat) == 0x20) {   // move the sign into 
         my = 0x80 | my;              // the 8th bit position
@@ -1064,10 +1039,6 @@ void loop() {
   go_z(TP_ROW);
   
 
-
-
-// Touchpad is enabled and in stream mode
- 
 
   
 //
