@@ -894,6 +894,23 @@ void loop() {
             if (fn_lock == LOW) {  // test if FN Lock is turned on
               load_slot(fnlock[x][y]); //update first available slot with key name from fnlock matrix
               send_normals(); // send all slots over USB including the key that just got pressed
+              // The media and system keys are not supported by Keyboard.set_keyX(). Therefore, it is necessary to use Keyboard.press() with delay()
+              if (fnlock[x][y] == KEY_MEDIA_MUTE) {
+                Keyboard.press(KEY_MEDIA_MUTE); // media key KEY_MEDIA_MUTE is sent using keyboard press function per PJRC    
+                delay(5); // delay 5 milliseconds before releasing to make sure it gets sent over USB
+                Keyboard.release(KEY_MEDIA_MUTE); // send media key release
+                media_mute = !media_mute;
+              }
+              else if (fnlock[x][y] == KEY_MEDIA_VOLUME_INC) {
+                Keyboard.press(KEY_MEDIA_VOLUME_INC); // media key KEY_MEDIA_VOLUME_INC is sent using keyboard press function per PJRC    
+                delay(5); // delay 5 milliseconds before releasing to make sure it gets sent over USB
+                Keyboard.release(KEY_MEDIA_VOLUME_INC); // send media key release
+              }
+              else if (fnlock[x][y] == KEY_MEDIA_VOLUME_DEC) {
+                Keyboard.press(KEY_MEDIA_VOLUME_DEC); // media key KEY_MEDIA_VOLUME_DEC is sent using keyboard press function per PJRC    
+                delay(5); // delay 5 milliseconds before releasing to make sure it gets sent over USB
+                Keyboard.release(KEY_MEDIA_VOLUME_DEC); // send media key release
+              }
             }
             else { // FN Lock is not turned on
               load_slot(normal[x][y]); //update first available slot with key name from normal matrix
@@ -901,17 +918,15 @@ void loop() {
             }
           }
           else if (media[x][y] != 0) { // Fn is pressed so send media if a key exists in the matrix
-            /*if (media[x][y] == KEY_MEDIA_MUTE) {
-              media_mute = !media_mute;
-            }*/
             if (media[x][y] == KEY_FN_LOCK) {
               fn_lock = !fn_lock; // invert the fn lock control
             }
-            else {
-              Keyboard.press(media[x][y]); // media key is sent using keyboard press function per PJRC    
-              delay(5); // delay 5 milliseconds before releasing to make sure it gets sent over USB
-              Keyboard.release(media[x][y]); // send media key release
+            else if (media[x][y] == KEY_MEDIA_MUTE) {
+              media_mute = !media_mute;
             }
+            Keyboard.press(media[x][y]); // media key is sent using keyboard press function per PJRC    
+            delay(5); // delay 5 milliseconds before releasing to make sure it gets sent over USB
+            Keyboard.release(media[x][y]); // send media key release
           }
           else if (normal[x][y] == KEY_F11) { // Fn is active and F11 is pressed - decrease trackpoint sensitivity
             if (tp_sens_shift > 0) {
